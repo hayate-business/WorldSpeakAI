@@ -1,0 +1,57 @@
+# Google Cloud Platform デプロイ設定
+# WorldSpeak AI - React Native Web デプロイ用
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worldspeak-ai
+  labels:
+    app: worldspeak-ai
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: worldspeak-ai
+  template:
+    metadata:
+      labels:
+        app: worldspeak-ai
+    spec:
+      containers:
+      - name: worldspeak-ai
+        image: gcr.io/PROJECT_ID/worldspeak-ai:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: EXPO_PUBLIC_SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: worldspeak-secrets
+              key: supabase-url
+        - name: EXPO_PUBLIC_SUPABASE_ANON_KEY
+          valueFrom:
+            secretKeyRef:
+              name: worldspeak-secrets
+              key: supabase-anon-key
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worldspeak-ai-service
+spec:
+  selector:
+    app: worldspeak-ai
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer
