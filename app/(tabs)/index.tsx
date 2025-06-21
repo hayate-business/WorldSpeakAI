@@ -6,17 +6,49 @@ import { ThemedView } from '@/components/ThemedView';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { useAuth } from '@/src/contexts/AuthContext';
+import { useTranslation } from '@/src/services/translation.service';
 
 const { width, height } = Dimensions.get('window');
 
 export default function HomeScreen() {
+  const { user, loading } = useAuth();
+  const { t } = useTranslation();
+
   const handleStartConversation = () => {
     try {
+      if (!user) {
+        router.push('/auth');
+        return;
+      }
       router.push('/settings');
     } catch (error) {
       console.error('Navigation error:', error);
     }
   };
+
+  const handleProfilePress = () => {
+    if (!user) {
+      router.push('/auth');
+      return;
+    }
+    router.push('/profile');
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#667eea', '#764ba2', '#f093fb']}
+          style={styles.backgroundGradient}
+        >
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>読み込み中...</Text>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -34,6 +66,21 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
+            <View style={styles.topBar}>
+              <View style={styles.welcomeSection}>
+                {user ? (
+                  <Text style={styles.welcomeText}>
+                    おかえりなさい
+                  </Text>
+                ) : (
+                  <Text style={styles.welcomeText}>ようこそ</Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={handleProfilePress} style={styles.profileButton}>
+                <Ionicons name={user ? "person-circle" : "log-in"} size={32} color="white" />
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.logoContainer}>
               <BlurView intensity={20} style={styles.logoBlur}>
                 <View style={styles.logo}>
@@ -42,8 +89,8 @@ export default function HomeScreen() {
               </BlurView>
             </View>
             <Text style={styles.appTitle}>WorldSpeak AI</Text>
-            <Text style={styles.appSubtitle}>AIと英会話の練習ができる</Text>
-            <Text style={styles.appDescription}>今までにないAI特化型英会話アプリ</Text>
+            <Text style={styles.appSubtitle}>{t('app.subtitle', 'AIと英会話の練習ができる')}</Text>
+            <Text style={styles.appDescription}>{t('app.description', '今までにないAI特化型英会話アプリ')}</Text>
           </View>
 
           <BlurView intensity={15} style={styles.featuresContainer}>
@@ -84,7 +131,9 @@ export default function HomeScreen() {
                 style={styles.buttonGradient}
               >
                 <Ionicons name="arrow-forward" size={24} color="white" style={styles.buttonIcon} />
-                <Text style={styles.startButtonText}>AIと英会話を始める</Text>
+                <Text style={styles.startButtonText}>
+                  {user ? t('button.start_conversation', 'AIと英会話を始める') : 'ログイン / 新規登録'}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -108,11 +157,38 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minHeight: height,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: 'white',
+    fontSize: 18,
+  },
   header: {
-    paddingTop: 80,
+    paddingTop: 60,
     paddingBottom: 60,
     paddingHorizontal: 30,
     alignItems: 'center',
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 20,
+  },
+  welcomeSection: {
+    flex: 1,
+  },
+  welcomeText: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  profileButton: {
+    padding: 4,
   },
   logoContainer: {
     marginBottom: 30,
