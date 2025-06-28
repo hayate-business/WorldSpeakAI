@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useState } from 'react';
 import {
   StyleSheet,
@@ -398,3 +399,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+=======
+import AuthScreen from '../screens/AuthScreen';
+
+export default AuthScreen;
+>>>>>>> feature/login-functionality

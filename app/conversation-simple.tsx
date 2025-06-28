@@ -45,36 +45,17 @@ export default function ConversationScreen() {
 
   // Initialize speech recognition support check
   useEffect(() => {
-    // Check for speech recognition support with fallback
-    const checkSpeechSupport = () => {
-      if (typeof window === 'undefined') return false;
-      
-      // Check for Web Speech API
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        setDebugInfo('Web Speech Recognition available');
-        return true;
-      }
-      
-      // Check if running on mobile - show different message
-      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      
-      if (isMobile) {
-        setDebugInfo('Mobile detected - Speech recognition may require HTTPS');
-        // Don't show alert immediately on mobile, let user try first
-        return false;
-      } else {
-        setDebugInfo('Desktop: Please use Chrome, Safari, or Edge');
-        Alert.alert(
-          'Browser Not Supported',
-          'Please use Chrome, Safari, or Edge for voice recognition.',
-          [{ text: 'OK' }]
-        );
-        return false;
-      }
-    };
-
-    checkSpeechSupport();
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setDebugInfo('Speech recognition not supported. Use Chrome, Safari, or Edge.');
+      Alert.alert(
+        'Browser Not Supported',
+        'Please use Chrome, Safari, or Edge for voice recognition.',
+        [{ text: 'OK' }]
+      );
+    } else {
+      setDebugInfo('Speech recognition ready');
+    }
 
     // Cleanup on unmount
     return () => {
@@ -107,28 +88,10 @@ export default function ConversationScreen() {
     try {
       setRecognizedText('');
       
-      // Check if speech recognition is available with better error handling
+      // Check if speech recognition is available
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognition) {
-        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
-        if (isMobile) {
-          Alert.alert(
-            'Speech Recognition Not Available', 
-            'モバイルではHTTPS接続が必要です。ChromeまたはSafariでhttps://でアクセスしてください。',
-            [
-              { text: 'OK', style: 'default' }
-            ]
-          );
-        } else {
-          Alert.alert(
-            'Speech Recognition Not Available', 
-            'Chrome、Safari、またはEdgeブラウザをご利用ください。',
-            [
-              { text: 'OK', style: 'default' }
-            ]
-          );
-        }
+        Alert.alert('Speech Recognition Not Available', 'Your browser does not support speech recognition.');
         return;
       }
 
@@ -390,7 +353,7 @@ Please respond:`;
             <View style={styles.scriptContent}>
               <Text style={styles.scriptText}>
                 I work as a <Text style={styles.blank}>______</Text>. 
-                It&apos;s <Text style={styles.blank}>______</Text> but I enjoy it because{' '}
+                It's <Text style={styles.blank}>______</Text> but I enjoy it because{' '}
                 <Text style={styles.blank}>______</Text>.
               </Text>
               <Text style={styles.scriptHint}>
@@ -413,7 +376,7 @@ Please respond:`;
                 </Text>
                 {recognizedText ? (
                   <Text style={styles.recognizedText}>
-                    認識: &quot;{recognizedText}&quot;
+                    認識: "{recognizedText}"
                   </Text>
                 ) : null}
               </TouchableOpacity>
