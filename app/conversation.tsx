@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as Speech from 'expo-speech';
-import { sendMessageToGemini } from '../lib/gemini';
+import { sendMessageToGemini } from '../src/lib/gemini';
 
 interface Message {
   id: string;
