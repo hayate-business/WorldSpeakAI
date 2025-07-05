@@ -1,263 +1,626 @@
-# セットアップガイド
+# セットアップガイド - WorldSpeakAI
 
-## 📋 前提条件
+## 📋 前提条件とシステム要件
 
 ### 必要なソフトウェア
-- **Node.js**: v18.0.0以上
-- **npm**: v9.0.0以上
-- **Git**: v2.0.0以上
-- **Expo CLI**: 最新版
+| ソフトウェア | 最小バージョン | 推奨バージョン | 用途 |
+|------------|-------------|-------------|------|
+| **Node.js** | v18.0.0 | v20.x LTS | JavaScript実行環境 |
+| **npm** | v9.0.0 | v10.x | パッケージ管理 |
+| **Git** | v2.30.0 | v2.44.x | バージョン管理 |
+| **Expo CLI** | v6.3.0 | 最新版 | React Native開発 |
 
 ### 推奨開発環境
-- **OS**: macOS, Windows 10/11, Ubuntu 20.04+
-- **エディタ**: VS Code (推奨拡張機能付き)
-- **ブラウザ**: Chrome (開発者ツール使用)
+- **OS**: macOS Monterey+, Windows 11, Ubuntu 22.04+ 
+- **RAM**: 8GB以上（推奨: 16GB+）
+- **ストレージ**: 10GB以上の空き容量
+- **エディタ**: VS Code（拡張機能設定済み）
+- **ブラウザ**: Chrome 100+（開発者ツール・音声API対応）
 
-## 🚀 クイックスタート
+### 外部サービスアカウント
+- **Supabase**: 無料アカウント
+- **Google AI Studio**: Gemini APIアクセス用
+- **Sentry**: エラー追跡（オプション）
 
-### 1. リポジトリのクローン
+## 🚀 クイックスタート（5分セットアップ）
+
+### 1. プロジェクトクローンと依存関係インストール
 ```bash
-# HTTPSでクローン
+# リポジトリクローン
 git clone https://github.com/hayate-business/WorldSpeakAI.git
-
-# または SSHでクローン
-git clone git@github.com:hayate-business/WorldSpeakAI.git
-
-# ディレクトリへ移動
 cd WorldSpeakAI
-```
 
-### 2. 依存関係のインストール
-```bash
-# npmを使用
+# 依存関係インストール（Node.js 18+推奨）
 npm install
 
-# またはyarnを使用
-yarn install
+# TypeScript型チェック
+npm run type-check
 ```
 
-### 3. 環境変数の設定
+### 2. 環境変数のセットアップ
 ```bash
-# .env.localファイルを作成
+# 環境変数ファイル作成
 cp .env.example .env.local
+
+# 必要最小限の設定
+cat > .env.local << EOF
+# === 必須設定 ===
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+GEMINI_API_KEY=AIzaSy...
+
+# === 開発環境設定 ===
+NODE_ENV=development
+EXPO_PUBLIC_APP_VARIANT=development
+
+# === オプション設定 ===
+SENTRY_DSN=https://your-sentry-dsn
+ANALYTICS_ID=your-analytics-id
+EOF
 ```
 
-`.env.local`ファイルを編集:
-```env
-# Supabase設定
-EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-
-# Gemini AI設定
-GEMINI_API_KEY=your_gemini_api_key
-
-# Google Cloud設定（オプション）
-GOOGLE_CLOUD_API_KEY=your_google_cloud_api_key
-```
-
-### 4. 開発サーバーの起動
+### 3. 開発サーバー起動
 ```bash
-# Expoで起動
-npm start
+# Web開発サーバー起動
+npm run web
 
-# または特定プラットフォーム
-npm run web      # Web版
-npm run ios      # iOS版
-npm run android  # Android版
+# または全プラットフォーム対応開発サーバー
+npm start
 ```
+
+**🎉 準備完了！** ブラウザで `http://localhost:8081` にアクセス
 
 ## 🔧 詳細セットアップ
 
-### Supabaseセットアップ
+### Supabaseプロジェクトセットアップ
 
-#### 1. Supabaseプロジェクト作成
-1. [Supabase](https://supabase.com)にアクセス
-2. 新規プロジェクト作成
-3. プロジェクト設定からURLとAnon Keyを取得
-
-#### 2. データベーススキーマ適用
+#### 1. プロジェクト作成
 ```bash
 # Supabase CLIインストール
 npm install -g supabase
 
-# ログイン
+# 新規プロジェクト初期化
+supabase init
+
+# Supabaseにログイン
 supabase login
-
-# マイグレーション実行
-supabase db push --db-url "postgresql://postgres:password@localhost:5432/postgres"
 ```
 
-または、Supabaseダッシュボードから直接SQLを実行:
-```sql
--- /supabase/migrations/20240614_create_tables.sql の内容をコピー&ペースト
-```
-
-#### 3. Row Level Security設定
-```sql
--- /supabase/setup_rls.sql の内容を実行
-```
-
-#### 4. ストレージバケット作成
-```sql
--- アバター用バケット
-INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true);
-
--- 音声ファイル用バケット  
-INSERT INTO storage.buckets (id, name, public) VALUES ('audio', 'audio', false);
-```
-
-### Gemini AI セットアップ
-
-#### 1. Google AI Studioアクセス
-1. [Google AI Studio](https://makersuite.google.com/)にアクセス
-2. Googleアカウントでログイン
-3. 「Get API key」をクリック
-
-#### 2. APIキー取得
+#### 2. データベーススキーマ適用
 ```bash
-# APIキーを環境変数に設定
-echo "GEMINI_API_KEY=your_api_key_here" >> .env.local
+# 本番環境へのマイグレーション実行
+supabase db push
+
+# ローカル開発環境セットアップ
+supabase start
+
+# シードデータ投入
+supabase db reset --with-seed
 ```
 
-#### 3. 使用制限確認
-- 無料枠: 60リクエスト/分
-- 有料プラン: 制限緩和
+#### 3. Row Level Security設定の確認
+```sql
+-- RLS有効化確認クエリ
+SELECT schemaname, tablename, rowsecurity 
+FROM pg_tables 
+WHERE schemaname = 'public' AND rowsecurity = true;
 
-### VS Code推奨設定
+-- 期待される結果: profiles, conversations, messages, subscriptions等がtrue
+```
 
-#### 拡張機能
+#### 4. ストレージバケット自動作成
+```bash
+# 自動セットアップスクリプト実行
+npm run setup:storage
+
+# または手動作成
+supabase storage create-bucket avatars --public
+supabase storage create-bucket audio --private
+supabase storage create-bucket conversation-exports --private
+```
+
+### Gemini AI APIセットアップ
+
+#### 1. APIキー取得と設定
+```bash
+# Google AI Studioでのセットアップ手順自動化
+npm run setup:gemini
+
+# 手動設定の場合
+# 1. https://makersuite.google.com/ にアクセス
+# 2. "Get API key" > "Create API key in new project"
+# 3. 生成されたキーを .env.local に設定
+```
+
+#### 2. API使用量制限設定
+```typescript
+// src/services/gemini.config.ts
+const GEMINI_CONFIG = {
+  development: {
+    maxRequestsPerMinute: 60,
+    maxTokensPerRequest: 1024,
+    temperature: 0.7
+  },
+  production: {
+    maxRequestsPerMinute: 1000, // 有料プラン
+    maxTokensPerRequest: 2048,
+    temperature: 0.6
+  }
+};
+```
+
+#### 3. API接続テスト
+```bash
+# Gemini API接続確認
+npm run test:gemini
+
+# 期待される出力
+# ✅ Gemini API connection successful
+# ✅ Model gemini-1.5-flash available
+# ✅ Rate limits configured
+```
+
+### 多言語音声機能セットアップ
+
+#### 1. Web Speech API設定確認
+```typescript
+// 音声認識対応確認スクリプト
+npm run check:speech-support
+
+// ブラウザ対応状況
+const checkSpeechSupport = () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  console.log('Speech Recognition:', SpeechRecognition ? '✅ Supported' : '❌ Not supported');
+  
+  // 対応言語一覧取得
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'ja-JP';
+  console.log('Language support:', recognition.lang);
+};
+```
+
+#### 2. expo-speech設定
+```bash
+# expo-speechの音声エンジン確認
+npm run check:speech-synthesis
+
+# 利用可能な音声一覧表示
+import * as Speech from 'expo-speech';
+
+const listVoices = async () => {
+  const voices = await Speech.getAvailableVoicesAsync();
+  voices.forEach(voice => {
+    console.log(`${voice.language}: ${voice.name} (${voice.quality})`);
+  });
+};
+```
+
+## 🧪 開発環境設定
+
+### VS Code設定最適化
+
+#### 1. 推奨拡張機能自動インストール
+```bash
+# VS Code拡張機能一括インストール
+cat .vscode/extensions.json | jq -r '.recommendations[]' | xargs -I {} code --install-extension {}
+```
+
+#### 2. デバッグ設定
 ```json
+// .vscode/launch.json
 {
-  "recommendations": [
-    "dbaeumer.vscode-eslint",
-    "esbenp.prettier-vscode",
-    "ms-vscode.vscode-typescript-next",
-    "msjsdiag.vscode-react-native",
-    "expo.vscode-expo-tools"
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Expo Web",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/node_modules/expo/bin/cli.js",
+      "args": ["start", "--web"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug Tests", 
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/node_modules/.bin/jest",
+      "args": ["--runInBand", "--no-cache"],
+      "console": "integratedTerminal"
+    }
   ]
 }
 ```
 
-#### 設定ファイル (.vscode/settings.json)
+#### 3. タスク自動化
 ```json
+// .vscode/tasks.json
 {
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": true
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Setup Development Environment",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "setup:dev"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Type Check",
+      "type": "shell", 
+      "command": "npm",
+      "args": ["run", "type-check"],
+      "group": "test"
+    }
+  ]
+}
+```
+
+### ESLint・Prettier設定
+
+#### 1. コード品質チェック
+```bash
+# リント実行
+npm run lint
+
+# 自動修正
+npm run lint:fix
+
+# 型チェック
+npm run type-check
+
+# 全チェック実行
+npm run check-all
+```
+
+#### 2. Git hooks設定
+```bash
+# pre-commit hook設定
+npx husky add .husky/pre-commit "npm run lint-staged"
+
+# commit-msg hook設定  
+npx husky add .husky/commit-msg "npx commitlint --edit $1"
+```
+
+### テスト環境セットアップ
+
+#### 1. Jest設定確認
+```bash
+# テスト実行
+npm test
+
+# カバレッジ付きテスト
+npm run test:coverage
+
+# ウォッチモード
+npm run test:watch
+```
+
+#### 2. E2Eテスト環境
+```bash
+# Maestroインストール（モバイルE2Eテスト）
+curl -Ls "https://get.maestro.mobile.dev" | bash
+
+# E2Eテスト実行
+npm run test:e2e
+```
+
+## 📱 マルチプラットフォーム開発
+
+### iOS開発環境（macOSのみ）
+
+#### 1. Xcode設定
+```bash
+# Xcodeコマンドラインツールインストール
+xcode-select --install
+
+# CocoaPodsインストール
+sudo gem install cocoapods
+
+# iOS依存関係セットアップ
+cd ios && pod install && cd ..
+
+# iOS開発証明書設定
+npm run ios:setup-certificates
+```
+
+#### 2. iOS固有設定
+```bash
+# iOSシミュレータで起動
+npm run ios
+
+# 特定デバイスで起動
+npm run ios -- --simulator="iPhone 15 Pro"
+
+# 実機デバイスで実行
+npm run ios -- --device
+```
+
+### Android開発環境
+
+#### 1. Android Studio設定
+```bash
+# 環境変数設定（~/.bashrc または ~/.zshrc に追加）
+export ANDROID_HOME=$HOME/Library/Android/sdk  # macOS
+export ANDROID_HOME=$HOME/Android/Sdk          # Linux
+export PATH=$PATH:$ANDROID_HOME/emulator
+export PATH=$PATH:$ANDROID_HOME/platform-tools
+
+# 設定確認
+npm run android:check-env
+```
+
+#### 2. エミュレータ設定
+```bash
+# 利用可能なエミュレータ一覧
+emulator -list-avds
+
+# エミュレータ起動
+emulator -avd Pixel_5_API_31
+
+# Android実行
+npm run android
+```
+
+### Web最適化
+
+#### 1. PWA設定
+```bash
+# PWAビルド
+npm run build:pwa
+
+# PWAローカルテスト
+npm run serve:pwa
+
+# Lighthouse監査
+npm run audit:lighthouse
+```
+
+#### 2. パフォーマンス最適化
+```typescript
+// webpack.config.js カスタマイズ
+const createExpoWebpackConfigAsync = require('@expo/webpack-config');
+
+module.exports = async function(env, argv) {
+  const config = await createExpoWebpackConfigAsync({
+    ...env,
+    babel: {
+      dangerouslyAddModulePathsToTranspile: ['@ui-kitten/components']
+    }
+  }, argv);
+  
+  // バンドル分析有効化
+  if (process.env.ANALYZE) {
+    const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+    config.plugins.push(new BundleAnalyzerPlugin());
+  }
+  
+  return config;
+};
+```
+
+## 🔄 環境別設定管理
+
+### 開発・ステージング・本番環境分離
+
+#### 1. 環境変数管理
+```bash
+# 開発環境
+cp .env.development .env.local
+
+# ステージング環境  
+cp .env.staging .env.local
+
+# 本番環境
+cp .env.production .env.local
+```
+
+#### 2. EAS Build設定
+```json
+// eas.json
+{
+  "cli": {
+    "version": ">= 5.2.0"
   },
-  "typescript.tsdk": "node_modules/typescript/lib",
-  "files.exclude": {
-    "**/.expo": true,
-    "**/.expo-shared": true,
-    "**/node_modules": true
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "ENVIRONMENT": "development"
+      }
+    },
+    "staging": {
+      "distribution": "internal",
+      "env": {
+        "ENVIRONMENT": "staging"
+      }
+    },
+    "production": {
+      "env": {
+        "ENVIRONMENT": "production"
+      }
+    }
   }
 }
 ```
 
-## 🧪 開発環境テスト
-
-### 1. 環境変数確認
+#### 3. 自動デプロイ設定
 ```bash
-# .env.localが正しく読み込まれているか確認
-npm run check-env
+# GitHub Actions有効化
+cp .github/workflows/deploy.yml.example .github/workflows/deploy.yml
+
+# EAS Secret設定
+eas secret:create --scope project --name EXPO_TOKEN --value your_expo_token
+eas secret:create --scope project --name SUPABASE_ACCESS_TOKEN --value your_supabase_token
 ```
 
-### 2. Supabase接続テスト
+## 📊 ヘルスチェックとモニタリング
+
+### 1. 環境診断ツール
+```bash
+# 総合ヘルスチェック実行
+npm run health-check
+
+# 期待される出力例：
+# ✅ Node.js version: v20.9.0
+# ✅ Supabase connection: OK
+# ✅ Gemini API: OK (60 requests/min available)
+# ✅ Speech Recognition: Supported
+# ✅ Audio recording: Available
+# ⚠️  iOS Simulator: Not available (macOS required)
+# ✅ Android Emulator: Ready
+```
+
+### 2. パフォーマンス監視
 ```typescript
-// src/lib/supabase.ts で接続確認
-const testConnection = async () => {
-  const { data, error } = await supabase.auth.getSession();
-  console.log('Supabase connection:', error ? 'Failed' : 'Success');
+// src/utils/performance.ts
+export const performanceMonitor = {
+  startTimer: (label: string) => {
+    console.time(label);
+    performance.mark(`${label}-start`);
+  },
+  
+  endTimer: (label: string) => {
+    console.timeEnd(label);
+    performance.mark(`${label}-end`);
+    performance.measure(label, `${label}-start`, `${label}-end`);
+  },
+  
+  measureAPICall: async (apiCall: Promise<any>, endpoint: string) => {
+    const start = performance.now();
+    try {
+      const result = await apiCall;
+      const duration = performance.now() - start;
+      console.log(`API ${endpoint}: ${duration.toFixed(2)}ms`);
+      return result;
+    } catch (error) {
+      const duration = performance.now() - start;
+      console.error(`API ${endpoint} failed after ${duration.toFixed(2)}ms`, error);
+      throw error;
+    }
+  }
 };
 ```
 
-### 3. Gemini API テスト
-```javascript
-// src/lib/gemini.js でテスト
-const testGemini = async () => {
-  const response = await sendMessageToGemini('Hello, test');
-  console.log('Gemini response:', response);
-};
-```
+## 🚨 トラブルシューティング
 
-## 📱 モバイル開発セットアップ
-
-### iOS開発（macOSのみ）
-```bash
-# Xcodeインストール（App Store経由）
-# CocoaPodsインストール
-sudo gem install cocoapods
-
-# iOS依存関係インストール
-cd ios && pod install && cd ..
-
-# iOS シミュレータで実行
-npm run ios
-```
-
-### Android開発
-```bash
-# Android Studioインストール
-# https://developer.android.com/studio
-
-# 環境変数設定
-export ANDROID_HOME=$HOME/Android/Sdk
-export PATH=$PATH:$ANDROID_HOME/platform-tools
-
-# Androidエミュレータで実行
-npm run android
-```
-
-## 🐛 トラブルシューティング
-
-### よくある問題
+### よくある問題と解決方法
 
 #### 1. Metro bundlerエラー
 ```bash
-# キャッシュクリア
-npx expo start -c
-```
+# 方法1: キャッシュクリア
+npm start -- --clear
 
-#### 2. 依存関係の競合
-```bash
-# node_modules削除
+# 方法2: node_modules再構築
 rm -rf node_modules package-lock.json
-
-# 再インストール
 npm install
+
+# 方法3: Metroリセット
+npx react-native start --reset-cache
 ```
 
-#### 3. Supabase接続エラー
-- URLとAnon Keyの確認
-- ネットワーク接続確認
-- CORS設定確認
-
-#### 4. 音声認識が動作しない
-- HTTPS接続確認
-- マイク権限確認
-- 対応ブラウザ確認
-
-## 🔄 アップデート手順
-
-### 最新版への更新
+#### 2. TypeScriptエラー
 ```bash
-# 最新コードを取得
-git pull origin main
+# 型定義更新
+npm run type-check:fix
 
-# 依存関係更新
-npm update
-
-# Expoアップデート
-expo upgrade
-
-# 開発サーバー再起動
-npm start -c
+# 厳密なTypeScriptチェック一時無効化
+# tsconfig.json で "strict": false に設定
 ```
 
-## 📞 サポート
+#### 3. 音声認識問題
+```typescript
+// デバッグ用音声認識テスト
+const debugSpeechRecognition = () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  
+  if (!SpeechRecognition) {
+    console.error('❌ Speech Recognition not supported');
+    return;
+  }
+  
+  const recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+  
+  recognition.onstart = () => console.log('🎤 Recording started');
+  recognition.onresult = (event) => console.log('✅ Result:', event.results[0][0].transcript);
+  recognition.onerror = (event) => console.error('❌ Error:', event.error);
+  recognition.onend = () => console.log('⏹️ Recording ended');
+  
+  recognition.start();
+};
+```
 
-問題が解決しない場合:
-1. [GitHub Issues](https://github.com/hayate-business/WorldSpeakAI/issues)で報告
-2. [ドキュメント](./09-troubleshooting.md)を確認
-3. コミュニティフォーラムで質問（今後開設予定）
+#### 4. Supabase接続問題
+```bash
+# Supabase接続診断
+npm run debug:supabase
+
+# ローカルSupabase起動（開発用）
+supabase start
+
+# リモートSupabase接続確認
+npm run test:supabase-connection
+```
+
+### 詳細ログ確認
+
+#### 1. デバッグモード有効化
+```bash
+# 詳細ログ出力
+DEBUG=* npm start
+
+# 特定モジュールのみ
+DEBUG=supabase:* npm start
+```
+
+#### 2. エラー追跡
+```typescript
+// src/utils/errorTracking.ts
+import * as Sentry from '@sentry/expo';
+
+export const initErrorTracking = () => {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    enableInExpoDevelopment: true
+  });
+};
+
+export const logError = (error: Error, context?: any) => {
+  console.error('Error:', error);
+  Sentry.captureException(error, { extra: context });
+};
+```
+
+## 🎯 次のステップ
+
+セットアップ完了後の推奨手順：
+
+1. **📖 [機能仕様書](./04-features.md)** を確認
+2. **🏗️ [アーキテクチャ](./02-architecture.md)** を理解  
+3. **🗄️ [データベース設計](./05-database.md)** を把握
+4. **🚀 [デプロイメント](./08-deployment.md)** で本番環境構築
+5. **🔧 [トラブルシューティング](./09-troubleshooting.md)** をブックマーク
+
+## 📞 サポートリソース
+
+### コミュニティサポート
+- **GitHub Issues**: [バグ報告・機能要望](https://github.com/hayate-business/WorldSpeakAI/issues)
+- **Discussions**: [質問・議論](https://github.com/hayate-business/WorldSpeakAI/discussions)
+- **Discord**: [リアルタイムサポート](https://discord.gg/worldspeakai)
+
+### ドキュメント
+- **トラブルシューティング**: [詳細解決方法](./09-troubleshooting.md)
+- **API仕様**: [エンドポイント詳細](./06-api.md)
+- **デプロイメント**: [本番環境構築](./08-deployment.md)
+
+---
+
+**🚀 セットアップ完了！WorldSpeakAIの多言語AI会話機能を実装して、世界中の言語学習者に革新的な体験を提供しましょう！**

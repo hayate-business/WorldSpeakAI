@@ -1,337 +1,805 @@
-# デプロイメント
+# デプロイメント手順書 - WorldSpeakAI
 
-## 🚀 デプロイ方法
+## 🚀 デプロイメント概要
 
-WorldSpeakAIは複数のプラットフォームにデプロイ可能です。
+WorldSpeakAIは複数のプラットフォームに対応したマルチターゲットデプロイメントを採用しています。
 
-## 📱 Expo Go（開発・テスト用）
-
-### 1. Expo Goアプリインストール
-- [iOS App Store](https://apps.apple.com/app/expo-go/id982107779)
-- [Google Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent)
-
-### 2. 開発サーバー起動
-```bash
-npm start
+### デプロイメント戦略
+```mermaid
+graph TD
+    A[開発環境] --> B[ステージング環境]
+    B --> C[本番環境]
+    
+    C --> D[Web プラットフォーム]
+    C --> E[iOS App Store]
+    C --> F[Google Play Store]
+    C --> G[PWA]
+    
+    D --> H[Vercel/Netlify]
+    E --> I[TestFlight → App Store]
+    F --> J[Play Console → Play Store]
+    G --> K[Service Worker + Cache]
 ```
 
-### 3. QRコードスキャン
-- iOS: カメラアプリでQRコードをスキャン
-- Android: Expo GoアプリでQRコードをスキャン
+## 🌐 Web版デプロイメント
 
-## 🌐 Web版デプロイ
+### Vercel（推奨）
 
-### Vercelへのデプロイ
-
-#### 1. ビルド
+#### 1. プロジェクト準備
 ```bash
-# Web用ビルド
-npx expo export --platform web
+# Web用最適化ビルド
+npm run build:web:optimized
 
-# または
-npm run build:web
+# ビルド結果確認
+ls -la dist/
+# 期待される出力: index.html, static/, assets/, manifest.json
 ```
 
-#### 2. Vercelセットアップ
+#### 2. Vercel設定ファイル
+```json
+// vercel.json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "env": {
+    "EXPO_PUBLIC_SUPABASE_URL": "@supabase_url",
+    "EXPO_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key"
+  },
+  "functions": {
+    "app/api/**/*.ts": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### 3. 自動デプロイ設定
 ```bash
 # Vercel CLIインストール
 npm i -g vercel
 
-# デプロイ
+# プロジェクト初期化
 vercel
 
-# 環境変数設定
-vercel env add EXPO_PUBLIC_SUPABASE_URL
-vercel env add EXPO_PUBLIC_SUPABASE_ANON_KEY
-vercel env add GEMINI_API_KEY
+# 本番環境変数設定
+vercel env add EXPO_PUBLIC_SUPABASE_URL production
+vercel env add EXPO_PUBLIC_SUPABASE_ANON_KEY production
+vercel env add GEMINI_API_KEY production
+vercel env add SENTRY_DSN production
+
+# カスタムドメイン設定
+vercel domains add worldspeakai.com
+vercel domains add www.worldspeakai.com
 ```
 
-#### 3. カスタムドメイン設定
-```bash
-vercel domains add worldspeak.ai
-```
+### Netlify（代替オプション）
 
-### Netlifyへのデプロイ
-
-#### 1. netlify.toml作成
+#### 1. 設定ファイル
 ```toml
+# netlify.toml
 [build]
-  command = "expo export --platform web"
+  command = "npm run build:web:production"
   publish = "dist"
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- docs/ README.md"
 
 [build.environment]
   NODE_VERSION = "18"
+  NPM_VERSION = "10"
+  EXPO_PUBLIC_ENV = "production"
+
+[context.production.environment]
+  NODE_ENV = "production"
+
+[context.staging.environment]
+  NODE_ENV = "staging"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
 ```
 
-#### 2. デプロイ
-```bash
-# Netlify CLIインストール
-npm i -g netlify-cli
+### PWA最適化
 
-# デプロイ
-netlify deploy --prod
+#### 1. Service Worker設定
+```javascript
+// public/sw.js
+const CACHE_NAME = 'worldspeakai-v1.0.0';
+const URLS_TO_CACHE = [
+  '/',
+  '/static/js/bundle.js',
+  '/static/css/main.css',
+  '/manifest.json'
+];
+
+// 多言語音声キャッシュ戦略
+const VOICE_CACHE_NAME = 'voice-cache-v1';
+const SCRIPT_CACHE_NAME = 'script-cache-v1';
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(URLS_TO_CACHE))
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  // 音声ファイルの特別なキャッシュ戦略
+  if (event.request.url.includes('/audio/')) {
+    event.respondWith(
+      caches.open(VOICE_CACHE_NAME).then((cache) => {
+        return cache.match(event.request).then((response) => {
+          if (response) {
+            return response;
+          }
+          return fetch(event.request).then((fetchResponse) => {
+            cache.put(event.request, fetchResponse.clone());
+            return fetchResponse;
+          });
+        });
+      })
+    );
+    return;
+  }
+
+  // デフォルトキャッシュ戦略
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => response || fetch(event.request))
+  );
+});
 ```
 
-## 📱 ネイティブアプリビルド
+## 📱 モバイルアプリデプロイメント
 
-### iOS App Store
+### EAS Build設定（全プラットフォーム）
 
-#### 1. Apple Developer登録
-- [Apple Developer Program](https://developer.apple.com/programs/)に登録
-- 年間$99の費用
-
-#### 2. EAS Build設定
+#### 1. EAS初期設定
 ```bash
 # EAS CLIインストール
-npm install -g eas-cli
+npm install -g eas-cli@latest
 
-# ログイン
+# Expoログイン
 eas login
 
-# プロジェクト設定
+# プロジェクト初期化
 eas build:configure
 ```
 
-#### 3. eas.json設定
+#### 2. 高度なEAS設定
 ```json
+// eas.json
 {
   "cli": {
-    "version": ">= 5.0.0"
+    "version": ">= 5.2.0"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
-    },
-    "preview": {
       "distribution": "internal",
       "ios": {
         "simulator": true
+      },
+      "env": {
+        "ENVIRONMENT": "development",
+        "EXPO_PUBLIC_SUPABASE_URL": "http://localhost:54321"
+      }
+    },
+    "staging": {
+      "distribution": "internal",
+      "channel": "staging",
+      "env": {
+        "ENVIRONMENT": "staging"
+      },
+      "ios": {
+        "buildConfiguration": "Release",
+        "bundleIdentifier": "com.worldspeakai.staging"
+      },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
       }
     },
     "production": {
+      "channel": "production",
+      "env": {
+        "ENVIRONMENT": "production"
+      },
       "ios": {
         "buildConfiguration": "Release",
-        "bundleIdentifier": "com.worldspeak.ai"
+        "bundleIdentifier": "com.worldspeakai.app",
+        "autoIncrement": "buildNumber"
+      },
+      "android": {
+        "buildType": "aab",
+        "gradleCommand": ":app:bundleRelease"
       }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "your-apple-id@example.com",
+        "appleId": "your-apple-id@email.com",
         "ascAppId": "1234567890",
         "appleTeamId": "YOUR_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./android-upload-key.json",
+        "track": "production"
       }
     }
   }
 }
 ```
 
-#### 4. ビルド実行
-```bash
-# プロダクションビルド
-eas build --platform ios --profile production
+### iOS App Store
 
-# テストフライト提出
-eas submit --platform ios
+#### 1. Apple Developer設定
+```bash
+# 開発証明書設定
+eas credentials:configure:ios
+
+# App Store Connect設定確認
+eas build:configure:ios
 ```
 
-### Google Play Store
-
-#### 1. Google Play Console登録
-- [Google Play Console](https://play.google.com/console)に登録
-- 初回$25の登録料
-
-#### 2. Android設定
+#### 2. app.json iOS設定
 ```json
-// app.json に追加
 {
   "expo": {
-    "android": {
-      "package": "com.worldspeak.ai",
-      "versionCode": 1,
-      "permissions": [
-        "RECORD_AUDIO"
-      ],
-      "googleServicesFile": "./google-services.json"
+    "ios": {
+      "bundleIdentifier": "com.worldspeakai.app",
+      "buildNumber": "1.0.0",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app uses the microphone for language learning conversations.",
+        "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to help you practice languages.",
+        "CFBundleAllowMixedLocalizations": true,
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "associatedDomains": [
+        "applinks:worldspeakai.com",
+        "applinks:www.worldspeakai.com"
+      ]
     }
   }
 }
 ```
 
-#### 3. ビルド&提出
+#### 3. ビルド・提出プロセス
 ```bash
 # プロダクションビルド
-eas build --platform android --profile production
+eas build --platform ios --profile production
 
-# Play Store提出
-eas submit --platform android
+# TestFlightアップロード
+eas submit --platform ios --latest
+
+# App Store提出状況確認
+eas submit:status
 ```
 
-## 🐳 Dockerコンテナ
+### Google Play Store
 
-### Dockerfile
+#### 1. Google Play Console設定
+```json
+// app.json Android設定
+{
+  "expo": {
+    "android": {
+      "package": "com.worldspeakai.app",
+      "versionCode": 1,
+      "compileSdkVersion": 34,
+      "targetSdkVersion": 34,
+      "permissions": [
+        "RECORD_AUDIO",
+        "INTERNET",
+        "WAKE_LOCK",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "config": {
+        "googleSignIn": {
+          "apiKey": "YOUR_GOOGLE_API_KEY",
+          "certificateHash": "YOUR_CERTIFICATE_HASH"
+        }
+      }
+    }
+  }
+}
+```
+
+#### 2. 署名とセキュリティ
+```bash
+# Upload key作成
+keytool -genkeypair -v -storetype PKCS12 -keystore upload-keystore.p12 -alias upload -keyalg RSA -keysize 2048 -validity 9125
+
+# EASでの署名設定
+eas credentials:configure:android
+
+# AAB（Android App Bundle）ビルド
+eas build --platform android --profile production
+```
+
+#### 3. Play Store提出
+```bash
+# Google Play Console提出
+eas submit --platform android --latest
+
+# 段階的リリース設定
+eas submit --platform android --track=internal
+eas submit --platform android --track=alpha
+eas submit --platform android --track=beta
+eas submit --platform android --track=production
+```
+
+## 🐳 コンテナ化デプロイメント
+
+### 最適化Dockerfile
 ```dockerfile
-FROM node:18-alpine
+# マルチステージビルド
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# 依存関係コピー
+# 依存関係のインストール
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --only=production && npm cache clean --force
 
-# アプリケーションコピー
+# ソースコード
 COPY . .
 
-# ビルド
-RUN npm run build:web
+# ビルド実行
+RUN npm run build:web:production
 
-# 環境変数
-ENV NODE_ENV=production
+# 本番用軽量イメージ
+FROM nginx:alpine AS production
 
-# ポート公開
-EXPOSE 3000
+# Nginx設定
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# 起動コマンド
-CMD ["npm", "run", "serve"]
+# ビルド結果コピー
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# ヘルスチェック
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost/ || exit 1
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
 ```
 
-### docker-compose.yml
+### Docker Compose（本番用）
 ```yaml
+# docker-compose.prod.yml
 version: '3.8'
 
 services:
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
     ports:
-      - "3000:3000"
+      - "80:80"
+      - "443:443"
     environment:
-      - EXPO_PUBLIC_SUPABASE_URL=${EXPO_PUBLIC_SUPABASE_URL}
-      - EXPO_PUBLIC_SUPABASE_ANON_KEY=${EXPO_PUBLIC_SUPABASE_ANON_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ENVIRONMENT=production
+    volumes:
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./logs:/var/log/nginx
     restart: unless-stopped
+    networks:
+      - worldspeakai
+
+  # Redis（キャッシュ）
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - worldspeakai
+
+  # Nginx Proxy（ロードバランシング）
+  proxy:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-proxy.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - web
+    restart: unless-stopped
+    networks:
+      - worldspeakai
+
+volumes:
+  redis_data:
+
+networks:
+  worldspeakai:
+    driver: bridge
 ```
 
 ## ⚙️ 本番環境設定
 
-### 環境変数管理
+### セキュリティ強化
 
-#### 1. 本番用.env作成
-```env
-# .env.production
-NODE_ENV=production
-EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-production-anon-key
-GEMINI_API_KEY=your-production-gemini-key
+#### 1. 環境変数暗号化
+```bash
+# Sops（Secrets OPerationS）使用
+# .sops.yaml
+creation_rules:
+  - path_regex: \.env\.production$
+    kms: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+
+# 暗号化
+sops -e .env.production > .env.production.enc
+
+# 復号化（デプロイ時）
+sops -d .env.production.enc > .env.production
 ```
 
-#### 2. セキュリティ設定
-- APIキーの暗号化
-- HTTPSの強制
-- CORSポリシーの設定
-- レート制限の実装
+#### 2. CSP（Content Security Policy）
+```javascript
+// next.config.js または webpack設定
+const securityHeaders = [
+  {
+    key: 'Content-Security-Policy',
+    value: `
+      default-src 'self';
+      script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com;
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data: https:;
+      font-src 'self';
+      connect-src 'self' https://*.supabase.co https://generativelanguage.googleapis.com;
+      media-src 'self' https://*.supabase.co;
+      worker-src 'self' blob:;
+    `.replace(/\s{2,}/g, ' ').trim()
+  }
+];
+```
 
 ### パフォーマンス最適化
 
-#### 1. アセット最適化
+#### 1. CDN設定（Cloudflare）
 ```bash
-# 画像圧縮
-npx expo-optimize
-
-# バンドルサイズ分析
-npx expo export --dump-assetmap
+# Cloudflare設定
+# 1. DNS設定
+# 2. SSL/TLS → Full (Strict)
+# 3. Speed → Optimization → Auto Minify: HTML, CSS, JS
+# 4. Caching → Browser Cache TTL: 4 hours
+# 5. Page Rules:
+#   - *.worldspeakai.com/static/* → Cache Level: Cache Everything, TTL: 1 month
+#   - *.worldspeakai.com/api/* → Cache Level: Bypass
 ```
 
-#### 2. コード最適化
-- Tree shaking有効化
-- 動的インポート使用
-- 不要な依存関係削除
+#### 2. リソース圧縮
+```javascript
+// webpack.config.js
+const CompressionPlugin = require('compression-webpack-plugin');
 
-### モニタリング設定
+module.exports = {
+  plugins: [
+    new CompressionPlugin({
+      algorithm: 'gzip',
+      test: /\.(js|css|html|svg)$/,
+      threshold: 8192,
+      minRatio: 0.8,
+    }),
+  ],
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      cacheGroups: {
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name: 'vendors',
+          chunks: 'all',
+        },
+        common: {
+          name: 'common',
+          minChunks: 2,
+          chunks: 'all',
+          enforce: true,
+        },
+      },
+    },
+  },
+};
+```
+
+## 📊 モニタリング・ログ
+
+### APM（Application Performance Monitoring）
 
 #### 1. Sentry統合
-```bash
-# Sentryインストール
-npm install @sentry/react-native
+```typescript
+// src/lib/monitoring.ts
+import * as Sentry from '@sentry/expo';
+import { ExpoConfig } from '@expo/config-types';
 
-# 初期化
-npx @sentry/wizard -i reactNative -p ios android
+export const initMonitoring = (config: ExpoConfig) => {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.ENVIRONMENT || 'development',
+    release: config.version,
+    dist: config.ios?.buildNumber || config.android?.versionCode?.toString(),
+    integrations: [
+      new Sentry.ReactNativeTracing({
+        tracingOrigins: ['localhost', 'worldspeakai.com', /^\//],
+        routingInstrumentation: Sentry.routingInstrumentation,
+      }),
+    ],
+    tracesSampleRate: 0.1,
+  });
+};
+
+// パフォーマンス追跡
+export const trackConversationPerformance = (conversationId: string) => {
+  const transaction = Sentry.startTransaction({
+    name: 'Conversation',
+    data: { conversationId },
+  });
+  
+  return {
+    addBreadcrumb: (message: string, data?: any) => {
+      Sentry.addBreadcrumb({
+        message,
+        category: 'conversation',
+        data,
+        level: 'info',
+      });
+    },
+    finish: () => transaction.finish(),
+  };
+};
 ```
 
 #### 2. Analytics設定
-```javascript
-// Google Analytics
-import Analytics from 'expo-analytics';
+```typescript
+// src/lib/analytics.ts
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
-const analytics = new Analytics('UA-XXXXXXXXX-X');
-analytics.hit(new PageHit('Home'));
+// Google Analytics 4
+export const trackEvent = (eventName: string, parameters?: any) => {
+  if (typeof window !== 'undefined' && window.gtag) {
+    window.gtag('event', eventName, {
+      ...parameters,
+      app_name: 'WorldSpeakAI',
+      app_version: process.env.EXPO_PUBLIC_APP_VERSION,
+    });
+  }
+};
+
+// カスタムイベント追跡
+export const trackConversationEvent = (action: string, language: string, duration?: number) => {
+  trackEvent('conversation_action', {
+    action,
+    language,
+    duration,
+    timestamp: Date.now(),
+  });
+};
 ```
 
-## 📊 デプロイチェックリスト
+## 🔄 CI/CD パイプライン
 
-### 事前確認
-- [ ] 全テストがパス
-- [ ] ESLintエラーなし
-- [ ] TypeScriptエラーなし
-- [ ] 環境変数設定完了
-- [ ] APIキー本番用に更新
-
-### ビルド確認
-- [ ] ビルドサイズ確認（< 50MB推奨）
-- [ ] 起動時間測定（< 3秒目標）
-- [ ] メモリ使用量確認
-- [ ] ネットワークエラーハンドリング
-
-### デプロイ後確認
-- [ ] 本番環境での動作確認
-- [ ] エラーモニタリング有効化
-- [ ] パフォーマンスモニタリング
-- [ ] ユーザーフィードバック収集
-
-## 🔄 CI/CD設定
-
-### GitHub Actions
+### GitHub Actions（完全版）
 ```yaml
-name: Deploy
+# .github/workflows/deploy.yml
+name: Build and Deploy
 
 on:
   push:
+    branches: [main, develop]
+  pull_request:
     branches: [main]
 
+env:
+  NODE_VERSION: '18'
+  CACHE_KEY: node-modules-${{ hashFiles('package-lock.json') }}
+
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Setup Node
-      uses: actions/setup-node@v3
-      with:
-        node-version: 18
-        
-    - name: Install dependencies
-      run: npm ci
+      - uses: actions/checkout@v4
       
-    - name: Run tests
-      run: npm test
-      
-    - name: Build
-      run: npm run build:web
-      env:
-        EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
         
-    - name: Deploy to Vercel
-      uses: amondnet/vercel-action@v20
-      with:
-        vercel-token: ${{ secrets.VERCEL_TOKEN }}
-        vercel-org-id: ${{ secrets.ORG_ID }}
-        vercel-project-id: ${{ secrets.PROJECT_ID }}
+      - name: Type check
+        run: npm run type-check
+        
+      - name: Lint
+        run: npm run lint
+        
+      - name: Test
+        run: npm run test:coverage
+        
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+
+  build-web:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build web
+        run: npm run build:web:production
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          
+      - name: Deploy to Vercel
+        uses: vercel/vercel-actions@v2
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          production: true
+
+  build-mobile:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        platform: [ios, android]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build ${{ matrix.platform }}
+        run: eas build --platform ${{ matrix.platform }} --profile production --non-interactive
+        
+      - name: Submit to store
+        if: github.event_name == 'push'
+        run: eas submit --platform ${{ matrix.platform }} --latest --non-interactive
 ```
+
+## 📝 デプロイメントチェックリスト
+
+### 事前準備
+- [ ] **コード品質**: 全テストパス、ESLint/TypeScriptエラー解消
+- [ ] **セキュリティ**: 本番用APIキー設定、シークレット暗号化
+- [ ] **パフォーマンス**: バンドルサイズ最適化（< 2MB目標）
+- [ ] **多言語対応**: 全対応言語での動作確認
+- [ ] **音声機能**: 各プラットフォームでの音声認識/合成テスト
+
+### ビルド検証
+- [ ] **Web版**: PWA対応、オフライン機能、レスポンシブデザイン
+- [ ] **iOS版**: App Store Review Guidelines準拠、TestFlight配布テスト
+- [ ] **Android版**: Play Console ポリシー準拠、段階的リリース設定
+
+### 本番環境
+- [ ] **監視**: Sentry、Analytics、パフォーマンス監視有効化
+- [ ] **DNS/SSL**: ドメイン設定、HTTPS強制、CDN設定
+- [ ] **バックアップ**: データベースバックアップ、設定ファイル保存
+
+## 🎯 リリース戦略
+
+### 段階的リリース
+1. **Alpha版** (内部テスト): 開発チーム限定
+2. **Beta版** (クローズドテスト): 限定ユーザー50名
+3. **RC版** (リリース候補): パブリックベータ200名
+4. **GA版** (一般提供): 全ユーザー
+
+### フィーチャーフラグ
+```typescript
+// src/lib/featureFlags.ts
+export const FEATURE_FLAGS = {
+  ADVANCED_PRONUNCIATION: process.env.EXPO_PUBLIC_ENABLE_PRONUNCIATION === 'true',
+  PREMIUM_VOICES: process.env.EXPO_PUBLIC_ENABLE_PREMIUM_VOICES === 'true',
+  EXPERIMENTAL_LANGUAGES: process.env.EXPO_PUBLIC_ENABLE_EXPERIMENTAL === 'true',
+} as const;
+
+export const isFeatureEnabled = (flag: keyof typeof FEATURE_FLAGS): boolean => {
+  return FEATURE_FLAGS[flag] || false;
+};
+```
+
+---
+
+**🚀 デプロイメント完了！WorldSpeakAIを世界中のユーザーに届けて、言語学習の未来を変革しましょう！**
